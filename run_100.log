@@ -1,0 +1,59 @@
+Oct 27 22:51:45 2014 17154 4 9.1.2 handleTSRegisterTerm(): TS reports task <0> pid <17207> on host<psana1108> killed or core dumped
+--------------------------------------------------------------------------
+mpirun was unable to launch the specified application as it could not
+change to the specified working directory:
+
+Working directory: /reg/d/psdm/amo/amoi0214/ftc/mbucher
+Node: psana1109
+
+while attempting to start process rank 6.
+--------------------------------------------------------------------------
+Job  mympirun_wrapper /afs/slac/package/lsf/curr/bin/TaskStarter -p psana1108.pcdsn:46129 -c /afs/slac/package/lsf/curr/conf -s /afs/slac/package/lsf/curr/etc -a LINUX python amoi0214-spectra.py 100
+
+TID   HOST_NAME   COMMAND_LINE            STATUS            TERMINATION_TIME
+===== ========== ================  =======================  ===================
+00000 psana1110. python amoi0214-  Killed by PAM (SIGKILL)  10/27/2014 22:51:47
+00001 psana1109                    Undefined               
+00002 psana1107. python amoi0214-  Killed by PAM (SIGKILL)  10/27/2014 22:51:47
+00003 psana1103. python amoi0214-  Signaled (SIGTERM)       10/27/2014 22:51:46
+00004 psana1408. python amoi0214-  Killed by PAM (SIGKILL)  10/27/2014 22:51:46
+00005 psana1403. python amoi0214-  Signaled (SIGTERM)       10/27/2014 22:51:46
+00006 psana1113. python amoi0214-  Signaled (SIGTERM)       10/27/2014 22:51:46
+00007 psana1108. python amoi0214-  Signaled (SIGTERM)       10/27/2014 22:51:44
+
+------------------------------------------------------------
+Sender: LSF System <lsf@psana1108.pcdsn>
+Subject: Job 50993: <pam -g 1 mympirun_wrapper python amoi0214-spectra.py 100> in cluster <slac> Exited
+
+Job <pam -g 1 mympirun_wrapper python amoi0214-spectra.py 100> was submitted from host <psanacs049.pcdsn> by user <mbucher> in cluster <slac>.
+Job was executed on host(s) <1*psana1108>, in queue <psanaq>, as user <mbucher> in cluster <slac>.
+                            <1*psana1113>
+                            <1*psana1403>
+                            <1*psana1408>
+                            <1*psana1103>
+                            <1*psana1107>
+                            <1*psana1109>
+                            <1*psana1110>
+</reg/neh/home/mbucher> was used as the home directory.
+</reg/d/psdm/amo/amoi0214/ftc/mbucher> was used as the working directory.
+Started at Mon Oct 27 22:51:42 2014
+Results reported on Mon Oct 27 22:53:21 2014
+
+Your job looked like:
+
+------------------------------------------------------------
+# LSBATCH: User input
+pam -g 1 mympirun_wrapper python amoi0214-spectra.py 100
+------------------------------------------------------------
+
+Exited with exit code 135.
+
+Resource usage summary:
+
+    CPU time :               8.12 sec.
+    Total Requested Memory : -
+    Delta Memory :           -
+    (Delta: the difference between Total Requested Memory and Max Memory.)
+
+The output (if any) is above this job summary.
+
