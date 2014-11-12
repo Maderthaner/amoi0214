@@ -67,7 +67,7 @@ if rank==0:
     publish.init()
 
 # Set up detectors to read
-opal_src = psana.Source("DetInfo(AmoEndstation.1:Opal1000.0)")
+opal_src = psana.Source("DetInfo(AmoEndstation.0:Opal1000.0)")
 
 # Set up event counters
 eventCounter = 0
