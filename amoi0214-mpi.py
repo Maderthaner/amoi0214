@@ -67,7 +67,7 @@ if rank==0:
     publish.init()
 
 # Set up detectors to read
-opal_src = psana.Source("DetInfo(AmoEndstation.0:Opal1000.0)")
+opal_src = psana.Source("DetInfo(AmoEndstation.1:Opal1000.0)")
 
 # Set up event counters
 eventCounter = 0
@@ -244,7 +244,7 @@ for run in ds.runs():
                 # #
                 moments_avg_arr = np.array(list(moments_buff))
                 ax4 = range(0,len(moments_avg_arr))
-                moments_avg_plot = XYPlot(evtGood, "Standart Deviation of X-Projection", ax4, moments_avg_arr,formats=".-") # make a 1D plot
+                moments_avg_plot = XYPlot(evtGood, "Standart Deviation of avg Histrogram", ax4, moments_avg_arr,formats=".-") # make a 1D plot
                 publish.send("MOMENTSRUNAVG", moments_avg_plot) # send to the display
 
                 # average histogram of hits
