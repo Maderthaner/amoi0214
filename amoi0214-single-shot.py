@@ -1,4 +1,3 @@
-
 # useful web pages:
 # psana-python: https://confluence.slac.stanford.edu/display/PSDM/psana+-+Python+Script+Analysis+Manual
 # realtime plots: https://confluence.slac.stanford.edu/display/PSDM/psana+-+Python+Script+Analysis+Manual#psana-PythonScriptAnalysisManual-Real-timeOnlinePlotting/Monitoring
@@ -9,21 +8,20 @@
 # psplot XPROJ &
 
 # plotting commands (when run on the a different node) '-s' means 'server':
-# psplot -s daq-amo-mon02 OPAL &
+# psplot -s daq-amo-mon03 OPAL &
 
 # to get the analysis environment: source /reg/g/psdm/etc/ana_env.csh
 
 # to run this on multiple nodes one needs to setup env properly on all of them by running the following (on line)
-# /reg/g/psdm/sw/releases/ana-current/arch/x86_64-rhel5-gcc41-opt/bin/mpirun -n 24 --host daq-amo-mon02,daq-amo-mon03,daq-amo-mon04 amoi0214-mpi.csh
+# /reg/g/psdm/sw/releases/ana-current/arch/x86_64-rhel5-gcc41-opt/bin/mpirun -n 16 --host daq-amo-mon03,daq-amo-mon04 amoi0214-mpi.csh
 
 
 # Standard PYTHON modules
-print "IMPORTING STANDARD PYTHON MODULES...",
+print "STARTING...",
 import matplotlib.pyplot as plt
 import numpy as np
 import math
 import collections
-import random
 # print "DONE"
 
 # LCLS psana to read data
@@ -64,15 +62,12 @@ def moments(arr):
     sdev  = np.sqrt(var)
     return mean,sdev
 
-
-
 if rank==0:
     publish.init()
 
 # Set up detectors to read
-opal_src = psana.Source("DetInfo(AmoEndstation.0:Opal1000.0)")
-acq_src = psana.Source("DetInfo(AmoITOF.0:Acqiris.0)")
-ebeam_src = psana.Source("BldInfo(EBeam)")
+#opal_src = psana.Source("DetInfo(AmoEndstation.1:Opal1000.0)") # For data of first runs
+opal_src = psana.Source("DetInfo(AmoEndstation.0:Opal1000.0)") # End of December data
 
 # Set up event counters
 eventCounter = 0
@@ -82,27 +77,33 @@ evtUsed = 0
 
 # Buffers for histories
 history_len = 6
-history_len_long = 100
+history_len_long = 50
 opal_hit_buff = collections.deque(maxlen=history_len)
 opal_hit_avg_buff = collections.deque(maxlen=history_len_long)
 opal_circ_buff = collections.deque(maxlen=history_len)
-xproj_int_buff = collections.deque(maxlen=history_len)
-xproj_int_avg_buff = collections.deque(maxlen=history_len)
+xproj_max_buff = collections.deque(maxlen=history_len)
+#xproj_int_avg_buff = collections.deque(maxlen=history_len)
 moments_buff = collections.deque(maxlen=history_len_long)
 #moments_avg_buff = collections.deque(maxlen=history_len_long)
 #xhistogram_buff = collections.deque(maxlen=history_len)
 hitxprojhist_buff = collections.deque(maxlen=history_len)
-hitxprojjitter_buff = collections.deque(maxlen=history_len)
-hitxprojseeded_buff = collections.deque(maxlen=history_len)
 
 from Histogram import hist1d
 
 hithist = hist1d(100,0.,1024.)
-hitjitter = hist1d(100,0.,1024.)
-hitseeded = hist1d(100,0.,1024.)
 
-# ion yield array for sxrss scan
-ion_yield = np.zeros(102) ##choose appropriate range
+import argparse
+parser = argparse.ArgumentParser()
+parser.add_argument("run", help="psana run number")
+args = parser.parse_args()
+
+
+
+if rank==0:
+    publish.init()
+    print "DONE READING THE HEADER. CONTINUING ANALYSIS ON", size, "CORES FOR RUN", args.run,"."
+
+
 
 ###### --- Online analysis
 # ds = psana.DataSource('shmem=AMO.0:stop=no')
@@ -111,29 +112,17 @@ ion_yield = np.zeros(102) ##choose appropriate range
 ###### --- End of Online analysis region
 
 ###### --- Offline analysis
-ds = psana.DataSource("exp=AMO/amoi0214:run=89:idx")
+ds = psana.DataSource("exp=AMO/amoi0214:run=%s:idx" % args.run)
 for run in ds.runs():
    times = run.times()
    mylength = len(times)/size
    mytimes= times[rank*mylength:(rank+1)*mylength]
    for i in range(mylength):
-       evt = run.event(mytimes[i])
+        evt = run.event(mytimes[i])
 ###### --- End of Offline analysis region
 
-        #ebeam = evt.get(psana.Bld.BldDataEBeamV3,'BldInfo(Ebeam)')
-        #ebeam = evt.get(psana.Bld.BldDataEBeamV6,'BldInfo(Ebeam)')
-        #ebeam = evt.get(psana.Bld.EBeamL3E,'BldInfo(Ebeam)')
-        #print ebeam
-        #ebeam = evt.get(psana.Bld.BldDataEbeamV1,'BldInfo(Ebeam)')
-        #print ebeam
         opal_raw = evt.get(psana.Camera.FrameV1,opal_src)
 
-        acq = evt.get(psana.Acqiris.DataDescV1,acq_src)
-        #acqnumchannels = acq.data_shape()
-        chan=0
-
-        wf = acq.data(chan).waveforms()[0]
-        
         # Check all detectors are read in
         eventCounter += 1
         if (opal_raw is None) :
@@ -149,7 +138,7 @@ for run in ds.runs():
             
 
         # threshold the image
-        threshold = 500
+        threshold = 700
         opal_thresh = (opal>threshold)*opal
 
         # do two projections
@@ -166,67 +155,36 @@ for run in ds.runs():
         if len(c) != 0:
             x2,y2 = zip(*c)
             blob_centroid = np.sum(x2)/float(len(x2))
-            #print blob_centroid
-
             shift = 512-int(blob_centroid)
-            mu,sig = moments(opal_thresh_xproj)	
-            index = int(blob_centroid/10)            
-	
-            # uncomment bellow for two pulse two color jitter correction only !!!!
-
-            bot = 0     # first edge of the first energy peak
-            top = 700   # second edge of the first energy peak
-            mu,sig = moments(opal_thresh_xproj[bot:top])	
-            shift = 250 - int(mu) - bot
-            #index = int(mu/10)        
-	
         else:
             shift = 0
-            index = 0
             
-        #print shift
         # Hit Histogram
         hithist.data = np.zeros(hithist.nbinx)
-        hitjitter.data = np.zeros(hitjitter.nbinx)
-        hitseeded.data = np.zeros(hitseeded.nbinx)
         for hit in c:
             hithist.fill(hit[0]+shift)
-            hitjitter.fill(hit[0])
 
-        # find yield of waveform over certain interval
-        wf_yield = np.sum(wf[1:401]-wf[5300:5700]) #choose proper window later  
-        # get maximum value of x-ray beam
-        #max_hithist = np.amax(hithist.data,axis=0) # might have to change this to x2.data?
-        max_hithist = np.amax(opal_thresh_xproj,axis=0) # might have to change this to x2.data?
-        #print max_hithist
 
-        if max_hithist > 25000: #change value later
-            ion_yield[index] = ion_yield[index] + wf_yield
-            for hit in c:
-                hitseeded.fill(hit[0])        
+        # Intense Shot filter
+        xproj_maxval = np.amax(opal_thresh_xproj,axis=0) # might have to change this to x2.data?
 
-        #print c
 
-        #print 'number of hits:',len(c)
-        #find_blobs.draw_blobs(opal,c,w) # draw the blobs in the opal picture
+        if evtGood > 1:
+            xproj_maxval_avg = np.array([sum(xproj_max_buff)])/len(xproj_max_buff)
 
-#        if 'sig' in locals():
-#            print sig
-#            if sig < 10: #change width condition
-#                ion_yield[index] = ion_yield[index] + wf_yield
-   
+            if 5 < np.amax(hithist.data):# + (0.8)*xproj_maxval_avg: #varying average
+                spectra_name = 'two-color-single-shot-data/run'+str(args.run).zfill(4)+'_core'+str(rank).zfill(3)+'_event'+str(evtGood).zfill(7)+'_scanSingleShot'
+                np.savetxt(spectra_name,hithist.data)
+                hist_last_intense_single_shot = hithist.data
+                opal_xproj_last_intenseshot = np.sum(opal,axis=1)
+
+
 
         ############## Histories of certain values #############
 
         # x-projection histogram history
         hitxprojhist_buff.append(hithist.data)
         hitxprojhist_sum = sum(hitxprojhist_buff)
-
-        hitxprojjitter_buff.append(hitjitter.data)
-        hitxprojjitter_sum = sum(hitxprojjitter_buff)
-
-        hitxprojseeded_buff.append(hitseeded.data)
-        hitxprojseeded_sum = sum(hitxprojseeded_buff)
 
 
         # Opal hitcounter history
@@ -235,8 +193,8 @@ for run in ds.runs():
         
 
         # x-projection history
-        #xproj_int_buff.append(integrated_projx)
-        #xproj_int_sum = np.array([sum(xproj_int_buff)])#/len(xproj_int_buff)
+        xproj_max_buff.append(xproj_maxval)
+        #xproj_max_sum = np.array([sum(xproj_int_buff)])/len(xproj_int_buff)
         
 
         # Opal history
@@ -245,7 +203,7 @@ for run in ds.runs():
         
 
         # only update the plots and call conm.Reduce "once in a while"
-        if evtGood%1 == 0:
+        if evtGood%6 == 0:
             ### create empty arrays and dump for master
             #if not 'moments_sum_all' in locals():
             #    moments_sum_all = np.empty_like(moments_sum)
@@ -271,27 +229,10 @@ for run in ds.runs():
                 hitxprojhist_sum_all = np.empty_like(hitxprojhist_sum)
             comm.Reduce(hitxprojhist_sum,hitxprojhist_sum_all)
 
-            if not 'hitjitter_sum_all' in locals():
-                hitjitter_sum_all = np.empty_like(hitjitter.data)
-            comm.Reduce(hitjitter.data,hitjitter_sum_all)
-
-            if not 'hitxprojjitter_sum_all' in locals():
-                hitxprojjitter_sum_all = np.empty_like(hitxprojjitter_sum)
-            comm.Reduce(hitxprojjitter_sum,hitxprojjitter_sum_all)
-
-            if not 'ion_yield_sum_all' in locals():
-                ion_yield_sum_all = np.empty_like(ion_yield)
-            comm.Reduce(ion_yield,ion_yield_sum_all)
-
-            if not 'hitxprojseeded_sum_all' in locals():
-                hitxprojseeded_sum_all = np.empty_like(hitxprojseeded_sum)
-            comm.Reduce(hitxprojseeded_sum,hitxprojseeded_sum_all)
-
-
 
             if rank==0:
                 ###### calculating moments of the hithist.data
-                m,s = moments(hitxprojjitter_sum_all) #changed from hitxprojhist_sum_all
+                m,s = moments(hitxprojhist_sum_all)
 
                 ###### History on master
                 print eventCounter*size, 'total events processed.'
@@ -302,10 +243,19 @@ for run in ds.runs():
                 moments_buff.append(s)
                 #moments_sum = np.array([sum(moments_buff)])#/len(moments_buff)
 
+                if not 'opal_xproj_last_intenseshot' in locals():
+                    opal_xproj_last_intenseshot = np.zeros_like(opal_thresh_xproj)
+
+                if not 'hist_last_intense_single_shot' in locals():
+                    hist_last_intense_single_shot = np.zeros_like(hithist.data)
+
                 # Exquisit plotting
                 ax = range(0,len(opal_thresh_xproj))
                 xproj_plot = XYPlot(evtGood, "X Projection", ax, opal_thresh_xproj,formats=".-") # make a 1D plot
                 publish.send("XPROJ", xproj_plot) # send to the display
+
+                xproj_intenseshot_plot = XYPlot(evtGood, "X Projection of Last Intense Shot", ax, opal_xproj_last_intenseshot,formats=".-") # make a 1D plot
+                publish.send("INTENSESHOTXPROJ", xproj_intenseshot_plot) # send to the display
 
                 # #
                 opal_hit_avg_arr = np.array(list(opal_hit_avg_buff))
@@ -322,7 +272,7 @@ for run in ds.runs():
                 # #
                 moments_avg_arr = np.array(list(moments_buff))
                 ax4 = range(0,len(moments_avg_arr))
-                moments_avg_plot = XYPlot(evtGood, "Standard Deviation of avg Histogram", ax4, moments_avg_arr,formats=".-") # make a 1D plot
+                moments_avg_plot = XYPlot(evtGood, "Standart Deviation of avg Histrogram", ax4, moments_avg_arr,formats=".-") # make a 1D plot
                 publish.send("MOMENTSRUNAVG", moments_avg_plot) # send to the display
 
                 # average histogram of hits
@@ -335,6 +285,10 @@ for run in ds.runs():
                 hit1shot_plot = XYPlot(evtGood, "Hit Hist 1 shot", ax6, hithist.data,formats=".-") # make a 1D plot
                 publish.send("HIT1SHOT", hit1shot_plot) # send to the display
 
+                # histogram of the last intense single shot
+                hist_intenseshot_plot = XYPlot(evtGood, "Histogram of Last Intense Shot", ax6, hist_last_intense_single_shot,formats=".-") # make a 1D plot
+                publish.send("INTENSESHOTHIST", hist_intenseshot_plot) # send to the display
+
                 # #
                 opal_plot = Image(evtGood, "Opal", opal) # make a 2D plot
                 publish.send("OPAL", opal_plot) # send to the display
@@ -342,38 +296,3 @@ for run in ds.runs():
                 # #
                 opal_plot_avg = Image(evtGood, "Opal Average", opal_sum_all/(len(opal_circ_buff)*size)) # make a 2D plot
                 publish.send("OPALAVG", opal_plot_avg) # send to the display
-                
-                # Exquisit plotting, acqiris
-                ax_wf = range(0,len(wf))
-                wf_plot = XYPlot(evtGood, "TOF Trace", ax_wf, wf,formats=".-") # make a 1D plot
-                publish.send("WF", wf_plot) # send to the display
-
-                # Exquisit plotting, ion yield
-                ax_ion = range(0,len(ion_yield))
-                ion_yield_plot = XYPlot(evtGood, "Ion Yield", ax_ion, ion_yield,formats=".-") # make a 1D plot
-                publish.send("ION", ion_yield_plot) # send to the display
-
-                # average of ion yield sum all
-                ax_ion_all = range(0,ion_yield_sum_all.shape[0])
-                ion_all_plot = XYPlot(evtGood, "Ion Yield All", ax_ion_all, ion_yield_sum_all,formats=".-") # make a 1D plot
-                publish.send("IONALL", ion_all_plot) # send to the display
-
-                # histogram of single shot, no jitter correction
-                axj = range(0,hitjitter.data.shape[0])
-                hitjitter_plot = XYPlot(evtGood, "Hit Hist No Jitter Correction", axj, hitjitter.data,formats=".-") # make a 1D plot
-                publish.send("HITJITTER", hitjitter_plot) # send to the display
-
-               # average histogram of hits, no jitter correction
-                axja = range(0,hitxprojjitter_sum_all.shape[0])
-                hitjitter_plot_avg = XYPlot(evtGood, "Hit Average, No Jitter Correction", axja, hitxprojjitter_sum_all/(len(hitxprojjitter_buff)*size),formats=".-") # make a 1D plot
-                publish.send("HITJITAVG", hitjitter_plot_avg) # send to the display
-
-                # histogram of single shot, seeded only
-                axseed = range(0,hitseeded.data.shape[0])
-                hitseeded_plot = XYPlot(evtGood, "Only Seeded", axseed, hitseeded.data,formats=".-") # make a 1D plot
-                publish.send("HITSEED", hitseeded_plot) # send to the display
-
-               # average histogram of hits, no jitter correction
-                axseedavg = range(0,hitxprojseeded_sum_all.shape[0])
-                hitseeded_plot_avg = XYPlot(evtGood, "Only Seeded Average", axja, hitxprojseeded_sum_all/(len(hitxprojseeded_buff)*size),formats=".-") # make a 1D plot
-                publish.send("HITSEEDAVG", hitseeded_plot_avg) # send to the display

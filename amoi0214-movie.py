@@ -27,7 +27,8 @@ import collections
 
 # LCLS psana to read data
 # print "IMPORTING psana...",
-import psana 
+#from psana import *
+import psana
 # print "DONE"
 
 # For online plotting
@@ -68,6 +69,8 @@ if rank==0:
 
 # Set up detectors to read
 opal_src = psana.Source("DetInfo(AmoEndstation.1:Opal1000.0)")
+ebeam_src = psana.Source("BldInfo(EBeam)")
+gdet_src = psana.Source('BldInfo(FEEGasDetEnergy)')
 
 # Set up event counters
 eventCounter = 0
@@ -77,7 +80,7 @@ evtUsed = 0
 
 # Buffers for histories
 history_len = 6
-history_len_long = 50
+history_len_long = 10000
 opal_hit_buff = collections.deque(maxlen=history_len)
 opal_hit_avg_buff = collections.deque(maxlen=history_len_long)
 opal_circ_buff = collections.deque(maxlen=history_len)
@@ -87,8 +90,14 @@ moments_buff = collections.deque(maxlen=history_len_long)
 #moments_avg_buff = collections.deque(maxlen=history_len_long)
 #xhistogram_buff = collections.deque(maxlen=history_len)
 hitxprojhist_buff = collections.deque(maxlen=history_len)
+gdet_buff = collections.deque(maxlen=history_len)
+gdet_avg_buff = collections.deque(maxlen=history_len_long)
 
 from Histogram import hist1d
+
+arr1 = []
+arr2 = []
+arr3 = []
 
 hithist = hist1d(100,0.,1024.)
 
@@ -100,7 +109,7 @@ hithist = hist1d(100,0.,1024.)
 ###### --- End of Online analysis region
 
 ###### --- Offline analysis
-ds = psana.DataSource("exp=AMO/amoi0214:run=111:idx")
+ds = psana.DataSource("exp=AMO/amoi0214:run=85:idx")
 for run in ds.runs():
     times = run.times()
     mylength = len(times)/size
@@ -110,10 +119,11 @@ for run in ds.runs():
 ###### --- End of Offline analysis region
 
         opal_raw = evt.get(psana.Camera.FrameV1,opal_src)
+        gdet = evt.get(psana.Bld.BldDataFEEGasDetEnergyV1,gdet_src)
 
         # Check all detectors are read in
         eventCounter += 1
-        if (opal_raw is None) :
+        if opal_raw is None or gdet is None:
             evtBad += 1
             continue
         else:
@@ -123,6 +133,13 @@ for run in ds.runs():
         opal = opal_raw.data16().astype(float)
         if 'opal_ped' in locals():
             opal -= opal_ped
+
+        gdENRC11 = gdet.f_11_ENRC()
+        gdENRC12 = gdet.f_12_ENRC()
+        gdENRC21 = gdet.f_21_ENRC()
+        gdENRC22 = gdet.f_22_ENRC()
+
+        
             
 
         # threshold the image
@@ -158,8 +175,13 @@ for run in ds.runs():
 
         #print 'number of hits:',len(c)
         #find_blobs.draw_blobs(opal,c,w) # draw the blobs in the opal picture
+        lenc = len(c)
 
-
+        arr1.append(gdENRC21)
+        arr2.append(gdENRC22)
+        arr3.append(lenc)
+        
+        #print arr1,arr2,arr3
 
         ############## Histories of certain values #############
 
@@ -173,9 +195,9 @@ for run in ds.runs():
         opal_hit_sum = np.array([sum(opal_hit_buff)])#/len(opal_hit_buff)
         
 
-        # x-projection history
-        #xproj_int_buff.append(integrated_projx)
-        #xproj_int_sum = np.array([sum(xproj_int_buff)])#/len(xproj_int_buff)
+        # gas-detector history
+        gdet_buff.append((gdENRC21+gdENRC22)/2)
+        gdet_sum = np.array([sum(gdet_buff)])#/len(gdet_buff)
         
 
         # Opal history
@@ -190,9 +212,9 @@ for run in ds.runs():
             #    moments_sum_all = np.empty_like(moments_sum)
             #comm.Reduce(moments_sum,moments_sum_all)
 
-            #if not 'xproj_in_sum_all' in locals():
-            #    xproj_int_sum_all = np.empty_like(xproj_int_sum)
-            #comm.Reduce(xproj_int_sum,xproj_int_sum_all)
+            if not 'gasdet_sum_all' in locals():
+                gasdet_sum_all = np.empty_like(gdet_sum)
+            comm.Reduce(gdet_sum,gasdet_sum_all)
 
             if not 'opal_hit_sum_all' in locals():
                 opal_hit_sum_all = np.empty_like(opal_hit_sum)
@@ -217,8 +239,8 @@ for run in ds.runs():
 
                 ###### History on master
                 print eventCounter*size, 'total events processed.'
-                opal_hit_avg_buff.append(opal_hit_sum_all[0]/(len(opal_hit_buff)*size))
-                #xproj_int_avg_buff.append(xproj_int_sum_all[0]/(len(xproj_int_buff)*size))
+                #opal_hit_avg_buff.append(opal_hit_sum_all[0]/(len(opal_hit_buff)*size))
+                #gdet_avg_buff.append(gasdet_sum_all[0]/(len(gdet_buff)*size))
                 #moments_avg_buff.append(moments_sum_all[0]/(len(moments_buff)*size))
                 ### moments history
                 moments_buff.append(s)
@@ -237,10 +259,11 @@ for run in ds.runs():
                 # print 'publish',opal_hit_avg_arr
                 publish.send("HITRATE", hitrate_avg_plot) # send to the display
                 # #
-                #xproj_int_avg_arr = np.array(list(xproj_int_avg_buff))
-                #ax3 = range(0,len(xproj_int_avg_arr))
-                #xproj_int_plot = XYPlot(eventCounter*size, "XProjection running avg history", ax3, xproj_int_avg_arr) # make a 1D plot
-                #publish.send("XPROJRUNAVG", xproj_int_plot) # send to the display
+
+                gdet_avg_buff_arr = np.array(list(gdet_avg_buff))
+                ax3 = range(0,len(gdet_avg_buff_arr))
+                gdet_avg_buff_plot = XYPlot(eventCounter*size, "Gas detector running avg history", ax3, gdet_avg_buff_arr) # make a 1D plot
+                publish.send("GASDET", gdet_avg_buff_plot) # send to the display
                 # #
                 moments_avg_arr = np.array(list(moments_buff))
                 ax4 = range(0,len(moments_avg_arr))
@@ -264,3 +287,7 @@ for run in ds.runs():
                 # #
                 opal_plot_avg = Image(eventCounter*size, "Opal Average", opal_sum_all/(len(opal_circ_buff)*size)) # make a 2D plot
                 publish.send("OPALAVG", opal_plot_avg) # send to the display
+
+    np.savetxt('gasdet1.dat',arr1)
+    np.savetxt('gasdet2.dat',arr2)
+    np.savetxt('sss.dat',arr3)
